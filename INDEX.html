@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor de Pedidos — Combinado Ruth</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a0a05; font-family: 'Nunito', sans-serif; min-height: 100vh; color: white; }
+
+  header {
+    background: linear-gradient(135deg, #C0392B, #7B241C);
+    padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-logo { font-family: 'Playfair Display', serif; font-size: 1.15rem; font-weight: 700; }
+  .header-sub  { font-size: 0.72rem; opacity: 0.8; font-weight: 600; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  #reloj {
+    font-size: 0.95rem; font-weight: 800; letter-spacing: 1px;
+    background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 20px;
+  }
+  #estado-conexion {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #2ecc71; box-shadow: 0 0 8px #2ecc71;
+    animation: pulso 1.8s infinite;
+  }
+  #estado-conexion.offline { background: #e74c3c; box-shadow: 0 0 8px #e74c3c; animation: none; }
+  @keyframes pulso { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(1.3)} }
+
+  /* STATS */
+  .stats-bar {
+    display: flex; gap: 8px; padding: 12px 16px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .stats-bar::-webkit-scrollbar { display: none; }
+  .stat-card {
+    background: #2a1208; border: 1px solid #3d1a0a;
+    border-radius: 14px; padding: 11px 14px;
+    min-width: 100px; text-align: center; flex-shrink: 0;
+  }
+  .stat-num   { font-size: 1.6rem; font-weight: 800; line-height: 1; margin-bottom: 3px; }
+  .stat-label { font-size: 0.68rem; opacity: 0.6; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card.pendientes .stat-num { color: #F39C12; }
+  .stat-card.entregados .stat-num { color: #2ecc71; }
+  .stat-card.total .stat-num      { color: #C0392B; }
+  .stat-card.yape .stat-num       { color: #9b59b6; }
+  .stat-card.efectivo .stat-num   { color: #F39C12; }
+
+  /* BARRA ACCIONES */
+  .acciones-bar {
+    display: flex; gap: 8px; padding: 0 16px 12px;
+    align-items: center;
+  }
+  .filtros { display: flex; gap: 6px; flex: 1; }
+  .btn-filtro {
+    flex: 1; padding: 9px 4px; border: 1px solid #3d1a0a;
+    border-radius: 12px; font-family: 'Nunito', sans-serif;
+    font-size: 0.76rem; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; background: #2a1208; color: #aaa;
+  }
+  .btn-filtro.activo { background: #C0392B; color: white; border-color: #C0392B; box-shadow: 0 2px 10px rgba(192,57,43,0.4); }
+
+  .btn-limpiar {
+    background: #3d1a0a; color: #e74c3c; border: 1px solid #e74c3c;
+    border-radius: 12px; padding: 9px 12px; font-family: 'Nunito', sans-serif;
+    font-size: 0.76rem; font-weight: 700; cursor: pointer; white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .btn-limpiar:hover { background: #e74c3c; color: white; }
+
+  /* PEDIDO CARD */
+  #lista-pedidos { padding: 0 16px 100px; display: flex; flex-direction: column; gap: 12px; }
+
+  .pedido-card {
+    background: #2a1208; border: 1px solid #3d1a0a;
+    border-radius: 20px; padding: 16px;
+    animation: slideIn 0.35s ease both;
+  }
+  .pedido-card.entregado { opacity: 0.45; border-color: #27AE60; }
+  @keyframes slideIn { from{opacity:0;transform:translateY(-14px)} to{opacity:1;transform:translateY(0)} }
+  .pedido-card.nuevo {
+    border-color: #F39C12;
+    box-shadow: 0 0 20px rgba(243,156,18,0.3);
+    animation: slideIn 0.35s ease both, brilloNuevo 2s ease 0.35s;
+  }
+  @keyframes brilloNuevo {
+    0%,100%{box-shadow:0 0 20px rgba(243,156,18,0.3)}
+    50%    {box-shadow:0 0 35px rgba(243,156,18,0.7)}
+  }
+
+  .pedido-header {
+    display: flex; justify-content: space-between;
+    align-items: flex-start; margin-bottom: 8px; gap: 8px;
+  }
+  .pedido-nombre { font-weight: 800; font-size: 1rem; color: #fff; }
+  .pedido-hora   { font-size: 0.74rem; color: #888; margin-top: 2px; }
+
+  .badges { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .badge {
+    border-radius: 20px; padding: 3px 10px;
+    font-size: 0.72rem; font-weight: 800; white-space: nowrap;
+  }
+  .badge-pendiente { background: rgba(243,156,18,0.2); color: #F39C12; border: 1px solid rgba(243,156,18,0.4); }
+  .badge-entregado { background: rgba(46,204,113,0.15); color: #2ecc71; border: 1px solid rgba(46,204,113,0.3); }
+  .badge-yape      { background: rgba(155,89,182,0.2); color: #b07eec; border: 1px solid rgba(155,89,182,0.3); }
+  .badge-efectivo  { background: rgba(243,156,18,0.15); color: #F39C12; border: 1px solid rgba(243,156,18,0.3); }
+
+  .pedido-dir {
+    font-size: 0.8rem; color: #aaa; margin-bottom: 10px;
+    padding-bottom: 10px; border-bottom: 1px solid #3d1a0a;
+  }
+  .pedido-items   { font-size: 0.83rem; color: #ddd; margin-bottom: 12px; line-height: 1.7; }
+  .pedido-item-ln { display: flex; justify-content: space-between; align-items: center; }
+
+  .pedido-footer  { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .pedido-demora  { font-size: 0.74rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+  .demora-p { background: rgba(243,156,18,0.15); color: #F39C12; }
+  .demora-e { background: rgba(46,204,113,0.12); color: #2ecc71; }
+  .pedido-total   { font-weight: 800; font-size: 1rem; color: #C0392B; margin-top: 5px; }
+
+  .btns-accion { display: flex; gap: 6px; }
+  .btn-entregar {
+    background: #C0392B; color: white; border: none;
+    border-radius: 12px; padding: 8px 14px;
+    font-family: 'Nunito', sans-serif; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+  }
+  .btn-revertir {
+    background: #3d1a0a; color: #888; border: 1px solid #555;
+    border-radius: 12px; padding: 8px 10px;
+    font-family: 'Nunito', sans-serif; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+  }
+  .btn-eliminar {
+    background: #3d1a0a; color: #e74c3c; border: 1px solid rgba(231,76,60,0.4);
+    border-radius: 12px; padding: 8px 10px;
+    font-family: 'Nunito', sans-serif; font-size: 0.8rem; font-weight: 700; cursor: pointer;
+  }
+
+  /* VACIO */
+  #vacio { display: none; text-align: center; padding: 80px 20px; color: #555; }
+  #vacio .icono { font-size: 4rem; margin-bottom: 16px; }
+
+  /* NOTIF */
+  #notif-nuevo {
+    display: none; position: fixed; top: 80px; left: 50%;
+    transform: translateX(-50%);
+    background: #F39C12; color: #1a0a05;
+    border-radius: 20px; padding: 12px 22px;
+    font-weight: 800; font-size: 0.9rem; z-index: 200;
+    box-shadow: 0 4px 20px rgba(243,156,18,0.5);
+    animation: bajar 0.3s ease; white-space: nowrap;
+  }
+  @keyframes bajar {
+    from{opacity:0;transform:translateX(-50%) translateY(-20px)}
+    to  {opacity:1;transform:translateX(-50%) translateY(0)}
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); z-index: 500;
+    align-items: center; justify-content: center; padding: 24px;
+  }
+  .modal-box {
+    background: #2a1208; border: 1px solid #3d1a0a;
+    border-radius: 20px; padding: 28px 22px;
+    width: 100%; max-width: 320px; text-align: center;
+  }
+  .modal-icono  { font-size: 2.5rem; margin-bottom: 10px; }
+  .modal-titulo { font-family: 'Playfair Display', serif; color: white; font-size: 1.1rem; margin-bottom: 8px; }
+  .modal-desc   { font-size: 0.85rem; color: #aaa; margin-bottom: 22px; line-height: 1.5; }
+  .btn-confirmar {
+    width: 100%; background: #C0392B; color: white; border: none;
+    border-radius: 12px; padding: 13px; font-weight: 700; font-size: 0.95rem;
+    cursor: pointer; font-family: 'Nunito', sans-serif; margin-bottom: 10px;
+  }
+  .btn-cancelar {
+    width: 100%; background: none; border: none; color: #666;
+    cursor: pointer; font-size: 0.9rem; font-family: 'Nunito', sans-serif;
+  }
+
+  /* TABS NAV */
+  .tabs-nav {
+    display: flex; background: #1a0a05;
+    border-bottom: 1px solid #3d1a0a;
+    position: sticky; top: 60px; z-index: 90;
+  }
+  .tab-nav {
+    flex: 1; padding: 11px 6px; text-align: center;
+    font-size: 0.74rem; font-weight: 700; color: #555;
+    cursor: pointer; border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  .tab-nav span { display: block; font-size: 1.2rem; margin-bottom: 2px; }
+  .tab-nav.activo { color: #C0392B; border-bottom-color: #C0392B; }
+
+  /* SECCIONES */
+  .seccion { display: none; }
+  .seccion.activa { display: block; }
+
+  /* ATENCIÓN */
+  .modo-badge {
+    border-radius: 14px; padding: 14px 16px; margin: 16px;
+    font-weight: 700; font-size: 0.9rem; text-align: center;
+  }
+  .turno-grid-mon { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 16px 12px; }
+  .btn-turno-mon {
+    padding: 18px 8px; border-radius: 16px; border: 2px solid;
+    background: #2a1208; font-family: 'Nunito', sans-serif;
+    font-weight: 700; font-size: 0.85rem; cursor: pointer;
+    text-align: center; transition: all 0.2s; line-height: 1.4;
+  }
+  .btn-turno-mon .tico { font-size: 2rem; display: block; margin-bottom: 5px; }
+  .btn-turno-mon .tsub { font-size: 0.67rem; opacity: 0.6; font-weight: 400; }
+  .btn-turno-mon.t-dia    { border-color: #F39C12; color: #F39C12; }
+  .btn-turno-mon.t-noche  { border-color: #9b59b6; color: #9b59b6; }
+  .btn-turno-mon.t-ambos  { border-color: #2ecc71; color: #2ecc71; }
+  .btn-turno-mon.t-cerrado{ border-color: #C0392B; color: #C0392B; }
+  .btn-turno-mon.activo.t-dia     { background: #F39C12; color: #1a0a05; }
+  .btn-turno-mon.activo.t-noche   { background: #9b59b6; color: white; }
+  .btn-turno-mon.activo.t-ambos   { background: #2ecc71; color: #1a0a05; }
+  .btn-turno-mon.activo.t-cerrado { background: #C0392B; color: white; }
+  .btn-turno-full {
+    display: block; width: calc(100% - 32px); margin: 0 16px 12px;
+    padding: 14px; border-radius: 16px; border: 2px solid;
+    background: #2a1208; font-family: 'Nunito', sans-serif;
+    font-weight: 700; font-size: 0.88rem; cursor: pointer;
+    text-align: center; transition: all 0.2s; line-height: 1.4;
+  }
+  .btn-turno-full.t-ambos  { border-color: #2ecc71; color: #2ecc71; }
+  .btn-turno-full.t-cerrado{ border-color: #C0392B; color: #C0392B; }
+  .btn-turno-full.activo.t-ambos   { background: #2ecc71; color: #1a0a05; }
+  .btn-turno-full.activo.t-cerrado { background: #C0392B; color: white; }
+
+  /* HISTORIAL */
+  .hist-section { padding: 0 16px 80px; }
+  .hist-label {
+    background: #3d1a0a; color: #F39C12;
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; padding: 5px 12px; border-radius: 20px;
+    display: inline-block; margin-bottom: 10px;
+  }
+  .meses-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 14px; scrollbar-width: none; }
+  .meses-scroll::-webkit-scrollbar { display: none; }
+  .btn-mes-h {
+    padding: 7px 14px; border-radius: 20px; border: 1px solid #3d1a0a;
+    background: #2a1208; color: #aaa; font-weight: 700; font-size: 0.8rem;
+    cursor: pointer; font-family: 'Nunito', sans-serif; white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .btn-mes-h.activo { background: #C0392B; color: white; border-color: #C0392B; }
+  .stats-grid-h { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .stat-card-h {
+    border-radius: 14px; padding: 14px; color: white;
+  }
+  .stat-label-h { font-size: 0.68rem; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  .stat-val-h   { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; }
+  .plato-row-h {
+    background: #2a1208; border: 1px solid #3d1a0a; border-radius: 12px;
+    padding: 11px 14px; margin-bottom: 8px;
+  }
+  .plato-top-h { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .plato-bar-bg-h { background: #3d1a0a; border-radius: 20px; height: 6px; overflow: hidden; }
+  .plato-bar-fill-h { height: 100%; background: linear-gradient(90deg,#C0392B,#F39C12); border-radius: 20px; }
+  .dia-row-h {
+    background: #2a1208; border: 1px solid #3d1a0a; border-radius: 12px;
+    padding: 11px 14px; margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .dia-badge-h {
+    background: #3d1a0a; border-radius: 8px;
+    padding: 5px 9px; text-align: center; min-width: 42px;
+  }
+
+  /* POR CONFIRMAR */
+  .confirm-banner {
+    margin: 0 16px 14px;
+    background: linear-gradient(135deg, rgba(243,156,18,0.15), rgba(243,156,18,0.05));
+    border: 2px solid rgba(243,156,18,0.5);
+    border-radius: 16px; padding: 14px 16px;
+    animation: pulseBanner 2s infinite;
+  }
+  @keyframes pulseBanner {
+    0%,100% { border-color: rgba(243,156,18,0.5); }
+    50%      { border-color: rgba(243,156,18,1); }
+  }
+  .confirm-banner-title {
+    font-weight: 800; color: #F39C12; font-size: 0.9rem; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .confirm-card {
+    background: #2a1208; border: 1px solid rgba(243,156,18,0.3);
+    border-radius: 14px; padding: 12px 14px; margin-bottom: 8px;
+  }
+  .confirm-card:last-child { margin-bottom: 0; }
+  .confirm-nombre { font-weight: 800; color: #fff; font-size: 0.92rem; }
+  .confirm-detalle { font-size: 0.8rem; color: #aaa; margin: 4px 0 10px; line-height: 1.5; }
+  .confirm-btns { display: flex; gap: 8px; }
+  .btn-aceptar {
+    flex: 1; background: #27AE60; color: white; border: none;
+    border-radius: 10px; padding: 9px; font-family: 'Nunito', sans-serif;
+    font-weight: 700; font-size: 0.82rem; cursor: pointer;
+  }
+  .btn-rechazar {
+    flex: 1; background: #3d1a0a; color: #e74c3c;
+    border: 1px solid rgba(231,76,60,0.4);
+    border-radius: 10px; padding: 9px; font-family: 'Nunito', sans-serif;
+    font-weight: 700; font-size: 0.82rem; cursor: pointer;
+  }
+
+  /* SCROLL TOP */
+  #btn-top {
+    display: none; position: fixed; bottom: 24px; right: 20px;
+    background: #C0392B; color: white; border: none;
+    border-radius: 50%; width: 46px; height: 46px;
+    font-size: 1.2rem; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(192,57,43,0.5); z-index: 150;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="header-logo">🍽️ Combinado Ruth</div>
+    <div class="header-sub">Monitor de pedidos en vivo</div>
+  </div>
+  <div class="header-right">
+    <div id="reloj">--:-- --</div>
+    <div id="estado-conexion"></div>
+  </div>
+</header>
+
+<!-- TABS NAV -->
+<div class="tabs-nav">
+  <div class="tab-nav activo" id="tn-pedidos"  onclick="irTab('pedidos')"><span>📋</span>Pedidos</div>
+  <div class="tab-nav"        id="tn-atencion" onclick="irTab('atencion')"><span>🚦</span>Atención</div>
+  <div class="tab-nav"        id="tn-historial" onclick="irTab('historial')"><span>📅</span>Historial</div>
+</div>
+
+<!-- SECCION PEDIDOS -->
+<div class="seccion activa" id="sec-pedidos">
+
+<!-- STATS -->
+<div class="stats-bar">
+  <div class="stat-card pendientes">
+    <div class="stat-num" id="stat-pendientes">0</div>
+    <div class="stat-label">Pendientes</div>
+  </div>
+  <div class="stat-card entregados">
+    <div class="stat-num" id="stat-entregados">0</div>
+    <div class="stat-label">Entregados</div>
+  </div>
+  <div class="stat-card total">
+    <div class="stat-num" id="stat-total">0</div>
+    <div class="stat-label">Total hoy</div>
+  </div>
+  <div class="stat-card yape">
+    <div class="stat-num" id="stat-yape">S/0</div>
+    <div class="stat-label">Yape hoy</div>
+  </div>
+  <div class="stat-card efectivo">
+    <div class="stat-num" id="stat-efectivo">S/0</div>
+    <div class="stat-label">Efectivo hoy</div>
+  </div>
+</div>
+
+<!-- FILTROS + LIMPIAR -->
+<div class="acciones-bar">
+  <div class="filtros">
+    <button class="btn-filtro activo" id="f-todos"      onclick="setFiltro('todos')">📋 Todos</button>
+    <button class="btn-filtro"        id="f-pendientes" onclick="setFiltro('pendientes')">⏳ Pend.</button>
+    <button class="btn-filtro"        id="f-entregados" onclick="setFiltro('entregados')">✅ Entregados</button>
+  </div>
+  <button class="btn-limpiar" onclick="confirmarLimpiar()">🗑️ Limpiar</button>
+</div>
+
+<div id="zona-confirmar" style="display:none;"></div>
+<div id="lista-pedidos"></div>
+
+<div id="vacio">
+  <div class="icono">🛵</div>
+  <p>No hay pedidos aún.<br>Cuando lleguen aparecerán aquí.</p>
+</div>
+
+<div id="notif-nuevo">🔔 ¡Nuevo pedido!</div>
+<button id="btn-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<!-- MODAL LIMPIAR DÍA -->
+<div class="modal-overlay" id="modal-limpiar">
+  <div class="modal-box">
+    <div class="modal-icono">🗑️</div>
+    <div class="modal-titulo">¿Limpiar registros del día?</div>
+    <div class="modal-desc">Se eliminarán todos los pedidos actuales de Firebase. Esta acción no se puede deshacer.</div>
+    <button class="btn-confirmar" onclick="ejecutarLimpiarConResumen()">Sí, borrar todo</button>
+    <button class="btn-cancelar"  onclick="cerrarModal('modal-limpiar')">Cancelar</button>
+  </div>
+</div>
+
+<!-- MODAL ELIMINAR PEDIDO -->
+<div class="modal-overlay" id="modal-eliminar">
+  <div class="modal-box">
+    <div class="modal-icono">🗑️</div>
+    <div class="modal-titulo">¿Eliminar este pedido?</div>
+    <div class="modal-desc" id="modal-eliminar-desc">Se eliminará permanentemente de Firebase.</div>
+    <button class="btn-confirmar" onclick="ejecutarEliminarConResumen()">Sí, eliminar</button>
+    <button class="btn-cancelar"  onclick="cerrarModal('modal-eliminar')">Cancelar</button>
+  </div>
+</div>
+
+</div><!-- /sec-pedidos -->
+
+<!-- SECCION ATENCIÓN -->
+<div class="seccion" id="sec-atencion">
+  <div style="padding:16px 16px 0;">
+    <h2 style="font-family:'Playfair Display',serif; color:white; font-size:1.3rem; margin-bottom:4px;">🚦 Control de atención</h2>
+    <p style="color:#666; font-size:0.83rem; margin-bottom:16px;">El cambio se aplica en todos los celulares al instante</p>
+  </div>
+
+  <div class="modo-badge" id="modo-badge-mon">Cargando...</div>
+
+  <div class="turno-grid-mon">
+    <button class="btn-turno-mon t-dia" id="bm-dia" onclick="setModoMon('dia')">
+      <span class="tico">☀️</span>Solo día<br><span class="tsub">8am – 4pm</span>
+    </button>
+    <button class="btn-turno-mon t-noche" id="bm-noche" onclick="setModoMon('noche')">
+      <span class="tico">🌙</span>Solo noche<br><span class="tsub">7pm – 12pm</span>
+    </button>
+  </div>
+  <button class="btn-turno-full t-ambos" id="bm-ambos" onclick="setModoMon('abierto')">
+    ✅ Ambos turnos <span style="font-size:0.72rem; font-weight:400; opacity:0.7;">☀️ día y 🌙 noche</span>
+  </button>
+  <button class="btn-turno-full t-cerrado" id="bm-cerrado" onclick="setModoMon('cerrado')">
+    🚫 Hoy no hay atención <span style="font-size:0.72rem; font-weight:400; opacity:0.7;">cerrado todo el día</span>
+  </button>
+</div>
+
+<!-- SECCION HISTORIAL -->
+<div class="seccion" id="sec-historial">
+  <div class="hist-section">
+    <h2 style="font-family:'Playfair Display',serif; color:white; font-size:1.3rem; margin-bottom:4px;">📅 Historial mensual</h2>
+    <p style="color:#666; font-size:0.83rem; margin-bottom:14px;">Acumulado de todos los meses</p>
+
+    <div class="meses-scroll" id="meses-scroll-h">
+      <div style="color:#555; font-size:0.85rem; padding:8px;">Cargando meses...</div>
+    </div>
+
+    <div class="stats-grid-h" id="stats-grid-h" style="display:none;">
+      <div class="stat-card-h" style="background:linear-gradient(135deg,#C0392B,#922B21);">
+        <div class="stat-label-h">Total del mes</div>
+        <div class="stat-val-h" id="h-total">S/ 0</div>
+      </div>
+      <div class="stat-card-h" style="background:linear-gradient(135deg,#2a1208,#3d1a0a); border:1px solid #3d1a0a;">
+        <div class="stat-label-h">Pedidos</div>
+        <div class="stat-val-h" id="h-pedidos">0</div>
+      </div>
+      <div class="stat-card-h" style="background:linear-gradient(135deg,#7b1fa2,#6a1b9a);">
+        <div class="stat-label-h">Total Yape</div>
+        <div class="stat-val-h" id="h-yape">S/ 0</div>
+      </div>
+      <div class="stat-card-h" style="background:linear-gradient(135deg,#b07d00,#8a6000);">
+        <div class="stat-label-h">Total Efectivo</div>
+        <div class="stat-val-h" id="h-efectivo">S/ 0</div>
+      </div>
+    </div>
+
+    <div id="h-wrap-platos" style="display:none;">
+      <div class="hist-label">🍽️ Ganancia por plato</div>
+      <div id="h-lista-platos"></div>
+    </div>
+
+    <div id="h-wrap-dias" style="display:none; margin-top:14px;">
+      <div class="hist-label">📆 Detalle por día</div>
+      <div id="h-lista-dias"></div>
+    </div>
+
+    <div id="h-vacio" style="display:none; text-align:center; padding:60px 20px; color:#555;">
+      <div style="font-size:3rem; margin-bottom:12px;">📭</div>
+      <p>No hay registros todavía</p>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase v8 -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script>
+  // ---- ESTADO ----
+  let pedidos = {};
+  let filtro = 'todos';
+  let primeraCarga = true;
+  let idAEliminar = null;
+
+  // ---- FIREBASE ----
+  firebase.initializeApp({
+    apiKey: "AIzaSyB73ZsU6x96DeIP7kHe3l78EAlaBp5KVQ0",
+    authDomain: "combinado-95a94.firebaseapp.com",
+    projectId: "combinado-95a94",
+    storageBucket: "combinado-95a94.firebasestorage.app",
+    messagingSenderId: "944325409907",
+    appId: "1:944325409907:web:8f1064129167153a46be06"
+  });
+  const db = firebase.firestore();
+
+  // ---- RELOJ ----
+  function tickReloj() {
+    document.getElementById('reloj').textContent =
+      new Date().toLocaleTimeString('es-PE', { hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true });
+  }
+  tickReloj();
+  setInterval(tickReloj, 1000);
+
+  // ---- DEMORA ----
+  function calcularDemora(p) {
+    const inicio = new Date(p.fecha);
+    const fin = p.entregado && p.fechaEntregado ? new Date(p.fechaEntregado) : new Date();
+    const mins = Math.floor((fin - inicio) / 60000);
+    if (mins < 1) return '< 1 min';
+    if (mins < 60) return mins + ' min';
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h + 'h' + (m > 0 ? ' ' + m + 'min' : '');
+  }
+
+  // ---- STATS ----
+  function actualizarStats() {
+    const hoy = new Date().toDateString();
+    const lista = Object.values(pedidos);
+    const hoyLista = lista.filter(p => new Date(p.fecha).toDateString() === hoy);
+    document.getElementById('stat-pendientes').textContent = lista.filter(p => !p.entregado).length;
+    document.getElementById('stat-entregados').textContent = lista.filter(p => p.entregado).length;
+    document.getElementById('stat-total').textContent      = hoyLista.length;
+    document.getElementById('stat-yape').textContent       = 'S/' + hoyLista.filter(p => p.pago === 'yape').reduce((s,p) => s + parseFloat(p.total||0), 0).toFixed(0);
+    document.getElementById('stat-efectivo').textContent   = 'S/' + hoyLista.filter(p => p.pago !== 'yape').reduce((s,p) => s + parseFloat(p.total||0), 0).toFixed(0);
+  }
+
+  // ---- RENDER ----
+  function render() {
+    const lista = Object.values(pedidos).sort((a, b) => {
+      if (a.entregado !== b.entregado) return a.entregado ? 1 : -1;
+      return new Date(b.fecha) - new Date(a.fecha);
+    });
+    const filtrada = lista.filter(p => {
+      if (filtro === 'pendientes') return !p.entregado;
+      if (filtro === 'entregados') return p.entregado;
+      return true;
+    });
+
+    const contenedor = document.getElementById('lista-pedidos');
+    const vacio      = document.getElementById('vacio');
+
+    if (!filtrada.length) { contenedor.innerHTML = ''; vacio.style.display = 'block'; actualizarStats(); return; }
+    vacio.style.display = 'none';
+
+    contenedor.innerHTML = filtrada.map(p => {
+      const hora  = new Date(p.fecha).toLocaleTimeString('es-PE', { hour:'numeric', minute:'2-digit', hour12:true });
+      const fecha = new Date(p.fecha).toLocaleDateString('es-PE', { day:'2-digit', month:'short' });
+      const esHoy = new Date(p.fecha).toDateString() === new Date().toDateString();
+      const items = p.items
+        ? Object.entries(p.items).map(([n,v]) => `<div class="pedido-item-ln"><span>• ${n}</span><span style="color:#F39C12;font-weight:700;">x${v.qty}</span></div>`).join('')
+        : '<span style="color:#555;">Sin detalle</span>';
+      const badgePago = p.pago === 'yape'
+        ? '<span class="badge badge-yape">📲 Yape</span>'
+        : '<span class="badge badge-efectivo">💵 Efectivo</span>';
+
+      return `<div class="pedido-card ${p.entregado?'entregado':''} ${p._nuevo?'nuevo':''}" id="card-${p._id}">
+        <div class="pedido-header">
+          <div>
+            <div class="pedido-nombre">👤 ${p.nombre}</div>
+            <div class="pedido-hora">${esHoy ? hora : fecha + ' · ' + hora}</div>
+          </div>
+          <div class="badges">
+            ${badgePago}
+            <span class="badge ${p.entregado?'badge-entregado':'badge-pendiente'}">${p.entregado?'✅ Entregado':'⏳ Pendiente'}</span>
+          </div>
+        </div>
+        <div class="pedido-dir">📍 ${p.dir||'—'}</div>
+        <div class="pedido-items">${items}</div>
+        <div class="pedido-footer">
+          <div>
+            <div class="pedido-demora ${p.entregado?'demora-e':'demora-p'}" id="demora-${p._id}">
+              ${p.entregado ? '✅ Entregado en ' + calcularDemora(p) : '⏱️ Tiempo de retraso: ' + calcularDemora(p)}
+            </div>
+            <div class="pedido-total">S/ ${p.total||'—'}</div>
+          </div>
+          <div class="btns-accion">
+            ${p.entregado
+              ? `<button class="btn-revertir" onclick="toggleEntregado('${p._id}',false)">↩ Revertir</button>`
+              : `<button class="btn-entregar" onclick="toggleEntregado('${p._id}',true)">✅ Entregar</button>`
+            }
+            <button class="btn-eliminar" onclick="pedirEliminar('${p._id}','${p.nombre}')">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    actualizarStats();
+  }
+
+  // ---- TOGGLE ENTREGADO ----
+  async function toggleEntregado(id, entregado) {
+    try {
+      const upd = { entregado };
+      if (entregado) upd.fechaEntregado = new Date().toISOString();
+      else upd.fechaEntregado = null;
+      await db.collection('pedidos').doc(id).update(upd);
+    } catch(e) { console.error(e); }
+  }
+
+  // ---- ELIMINAR PEDIDO ----
+  function pedirEliminar(id, nombre) {
+    idAEliminar = id;
+    document.getElementById('modal-eliminar-desc').textContent = 'Se eliminará el pedido de ' + nombre + ' permanentemente.';
+    document.getElementById('modal-eliminar').style.display = 'flex';
+  }
+  async function ejecutarEliminar() {
+    if (!idAEliminar) return;
+    try {
+      await db.collection('pedidos').doc(idAEliminar).delete();
+    } catch(e) { console.error(e); }
+    idAEliminar = null;
+    cerrarModal('modal-eliminar');
+  }
+
+  // ---- LIMPIAR DÍA ----
+  function confirmarLimpiar() {
+    document.getElementById('modal-limpiar').style.display = 'flex';
+  }
+  async function ejecutarLimpiar() {
+    cerrarModal('modal-limpiar');
+    try {
+      const snap = await db.collection('pedidos').get();
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch(e) { console.error(e); }
+  }
+
+  // ---- MODAL ----
+  function cerrarModal(id) {
+    document.getElementById(id).style.display = 'none';
+  }
+
+  // ---- FILTRO ----
+  function setFiltro(f) {
+    filtro = f;
+    ['todos','pendientes','entregados'].forEach(id => {
+      document.getElementById('f-' + id).classList.toggle('activo', id === f);
+    });
+    render();
+  }
+
+  // ---- NOTIFICACION ----
+  function notificarNuevo(nombre) {
+    const el = document.getElementById('notif-nuevo');
+    el.textContent = '🔔 Nuevo pedido de ' + nombre + '!';
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
+  // ---- DEMORA EN VIVO ----
+  setInterval(() => {
+    Object.values(pedidos).filter(p => !p.entregado).forEach(p => {
+      const el = document.getElementById('demora-' + p._id);
+      if (el) el.textContent = '⏱️ Tiempo de retraso: ' + calcularDemora(p);
+    });
+  }, 60000);
+
+  // ---- SCROLL TOP ----
+  window.addEventListener('scroll', () => {
+    document.getElementById('btn-top').style.display = window.scrollY > 300 ? 'block' : 'none';
+  });
+
+  // ---- PEDIDOS POR CONFIRMAR ----
+  let porConfirmar = {};
+
+  function renderZonaConfirmar() {
+    const zona = document.getElementById('zona-confirmar');
+    const lista = Object.values(porConfirmar).sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+    if (!lista.length) { zona.style.display = 'none'; return; }
+    zona.style.display = 'block';
+    zona.innerHTML = `<div class="confirm-banner">
+      <div class="confirm-banner-title">🔔 ${lista.length} pedido${lista.length>1?'s':''} esperando confirmación</div>
+      ${lista.map(p => {
+        const items = p.items
+          ? Object.entries(p.items).map(([n,v]) => n + ' x' + v.qty).join(', ')
+          : '—';
+        const hora = new Date(p.fecha).toLocaleTimeString('es-PE', { hour:'numeric', minute:'2-digit', hour12:true });
+        return `<div class="confirm-card">
+          <div class="confirm-nombre">👤 ${p.nombre}</div>
+          <div class="confirm-detalle">📍 ${p.dir || '—'}<br>🛒 ${items}<br>💰 S/ ${p.total} · ${p.pago==='yape'?'📲 Yape':'💵 Efectivo'} · ${hora}</div>
+          <div class="confirm-btns">
+            <button class="btn-aceptar" onclick="confirmarPedido('${p._id}')">✅ Aceptar</button>
+            <button class="btn-rechazar" onclick="rechazarPedido('${p._id}', '${p.nombre}')">❌ Rechazar</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  async function confirmarPedido(id) {
+    try {
+      await db.collection('pedidos').doc(id).update({ confirmado: true });
+    } catch(e) { console.error(e); }
+  }
+
+  async function rechazarPedido(id, nombre) {
+    if (!confirm('¿Rechazar el pedido de ' + nombre + '? Se eliminará.')) return;
+    try {
+      await db.collection('pedidos').doc(id).delete();
+    } catch(e) { console.error(e); }
+  }
+
+  // ---- ELIMINAR CON RESUMEN ----
+  async function sumarAlResumen(p) {
+    const hoy = (p.fechaEntregado || p.fecha || new Date().toISOString()).split('T')[0];
+    const platos = {};
+    if (p.items) {
+      Object.entries(p.items).forEach(([name, item]) => {
+        const qty = item.qty || 1;
+        const precio = item.price || item.precio || 0;
+        platos[name] = { qty, ganancia: precio * qty, precio };
+      });
+    }
+    try {
+      const docRef = db.collection('resumen_diario').doc(hoy);
+      const docSnap = await docRef.get();
+      let data = {
+        fecha: hoy,
+        total: p.total || 0,
+        totalYape:     p.pago === 'yape' ? (p.total||0) : 0,
+        totalEfectivo: p.pago !== 'yape' ? (p.total||0) : 0,
+        numPedidos: 1, platos,
+        guardadoEn: new Date().toISOString()
+      };
+      if (docSnap.exists) {
+        const prev = docSnap.data();
+        data.total         += prev.total || 0;
+        data.totalYape     += prev.totalYape || 0;
+        data.totalEfectivo += prev.totalEfectivo || 0;
+        data.numPedidos    += prev.numPedidos || 0;
+        if (prev.platos) {
+          Object.keys(prev.platos).forEach(n => {
+            if (!data.platos[n]) data.platos[n] = { qty:0, ganancia:0, precio: prev.platos[n].precio||0 };
+            data.platos[n].qty      += prev.platos[n].qty || 0;
+            data.platos[n].ganancia += prev.platos[n].ganancia || 0;
+          });
+        }
+      }
+      await docRef.set(data);
+    } catch(e) { console.error('Error resumen:', e); }
+  }
+
+  // Sobrescribir ejecutarEliminar para sumar al resumen si entregado
+  async function ejecutarEliminarConResumen() {
+    if (!idAEliminar) return;
+    const p = pedidos[idAEliminar];
+    if (p && p.entregado) await sumarAlResumen(p);
+    try {
+      await db.collection('pedidos').doc(idAEliminar).delete();
+    } catch(e) { console.error(e); }
+    idAEliminar = null;
+    cerrarModal('modal-eliminar');
+  }
+
+  // ---- LIMPIAR DÍA (solo suma entregados) ----
+  async function ejecutarLimpiarConResumen() {
+    cerrarModal('modal-limpiar');
+    try {
+      const snap = await db.collection('pedidos').get();
+      // Sumar al resumen los entregados antes de borrar
+      for (const doc of snap.docs) {
+        const p = { ...doc.data(), _id: doc.id };
+        if (p.entregado && p.confirmado !== false) await sumarAlResumen(p);
+      }
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch(e) { console.error(e); }
+  }
+
+  // ---- LISTENER TIEMPO REAL ----
+  db.collection('pedidos').orderBy('fecha', 'desc').onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      const id   = change.doc.id;
+      const data = { ...change.doc.data(), _id: id };
+
+      if (change.type === 'removed') {
+        delete pedidos[id];
+        delete porConfirmar[id];
+      } else if (change.type === 'added' || change.type === 'modified') {
+        // Separar: confirmado=false va a zona de revisión, el resto a lista normal
+        if (data.confirmado === false) {
+          porConfirmar[id] = data;
+          delete pedidos[id];
+          if (change.type === 'added' && !primeraCarga) {
+            notificarNuevoParaConfirmar(data.nombre);
+          }
+        } else {
+          delete porConfirmar[id];
+          const esNuevo = change.type === 'added' && !primeraCarga && data.confirmado === true;
+          data._nuevo = esNuevo || (pedidos[id] && pedidos[id]._nuevo);
+          pedidos[id] = data;
+          if (esNuevo) {
+            notificarNuevo(data.nombre);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setTimeout(() => { if (pedidos[id]) { pedidos[id]._nuevo = false; render(); } }, 4000);
+          }
+        }
+      }
+    });
+    primeraCarga = false;
+    renderZonaConfirmar();
+    render();
+  }, err => {
+    console.error(err);
+    document.getElementById('estado-conexion').classList.add('offline');
+  });
+
+  function notificarNuevoParaConfirmar(nombre) {
+    const el = document.getElementById('notif-nuevo');
+    el.style.background = '#F39C12';
+    el.style.color = '#1a0a05';
+    el.textContent = '⏳ Nuevo pedido de ' + nombre + ' — ¡revisar!';
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+
+  // ---- TABS ----
+  function irTab(id) {
+    ['pedidos','atencion','historial'].forEach(t => {
+      document.getElementById('sec-' + t).classList.toggle('activa', t === id);
+      document.getElementById('tn-' + t).classList.toggle('activo', t === id);
+    });
+    if (id === 'atencion')  cargarModoMon();
+    if (id === 'historial') cargarMesesH();
+  }
+
+  // ---- ATENCIÓN ----
+  const MODO_INFO_MON = {
+    dia:     { label:'☀️ Solo turno de día activo',   bg:'rgba(243,156,18,0.15)',  color:'#F39C12' },
+    noche:   { label:'🌙 Solo turno de noche activo', bg:'rgba(155,89,182,0.15)',  color:'#b07eec' },
+    abierto: { label:'✅ Ambos turnos activos',        bg:'rgba(46,204,113,0.15)', color:'#2ecc71' },
+    cerrado: { label:'🚫 Cerrado — sin atención hoy', bg:'rgba(192,57,43,0.15)',   color:'#e74c3c' },
+  };
+
+  async function cargarModoMon() {
+    try {
+      const snap = await db.collection('config').doc('atencion').get();
+      aplicarModoMon(snap.exists ? (snap.data().modo || 'abierto') : 'abierto');
+    } catch(e) { aplicarModoMon('abierto'); }
+  }
+
+  function aplicarModoMon(modo) {
+    const info = MODO_INFO_MON[modo] || MODO_INFO_MON.abierto;
+    const badge = document.getElementById('modo-badge-mon');
+    badge.textContent = info.label;
+    badge.style.background = info.bg;
+    badge.style.color = info.color;
+    badge.style.border = '2px solid ' + info.color;
+    const map = { dia:'bm-dia', noche:'bm-noche', abierto:'bm-ambos', cerrado:'bm-cerrado' };
+    ['dia','noche','abierto','cerrado'].forEach(m => {
+      const btn = document.getElementById(map[m]);
+      if (btn) btn.classList.toggle('activo', m === modo);
+    });
+  }
+
+  async function setModoMon(modo) {
+    aplicarModoMon(modo);
+    try {
+      await db.collection('config').doc('atencion').set({ modo, actualizadoEn: new Date().toISOString() });
+    } catch(e) { alert('Error al guardar. Revisa tu conexión.'); cargarModoMon(); }
+  }
+
+  // Escuchar cambios en tiempo real del modo
+  db.collection('config').doc('atencion').onSnapshot(snap => {
+    if (snap.exists) aplicarModoMon(snap.data().modo || 'abierto');
+  });
+
+  // ---- HISTORIAL ----
+  const MESES_NOM = {'01':'Ene','02':'Feb','03':'Mar','04':'Abr','05':'May','06':'Jun','07':'Jul','08':'Ago','09':'Sep','10':'Oct','11':'Nov','12':'Dic'};
+
+  async function cargarMesesH() {
+    const wrap = document.getElementById('meses-scroll-h');
+    try {
+      const snap = await db.collection('resumen_diario').get();
+      if (snap.empty) {
+        wrap.innerHTML = '<div style="color:#555;font-size:0.85rem;padding:8px;">Sin registros aún</div>';
+        document.getElementById('h-vacio').style.display = 'block';
+        return;
+      }
+      const mesesSet = new Set(snap.docs.map(d => d.id.substring(0,7)));
+      const meses = [...mesesSet].sort().reverse();
+      wrap.innerHTML = meses.map((m,i) => {
+        const [a, mes] = m.split('-');
+        return `<button class="btn-mes-h ${i===0?'activo':''}" id="bh-${m}" onclick="selMesH('${m}')">${MESES_NOM[mes]} ${a}</button>`;
+      }).join('');
+      if (meses.length) cargarDatosMesH(meses[0]);
+    } catch(e) {
+      wrap.innerHTML = '<div style="color:#555;font-size:0.85rem;">Error al cargar</div>';
+    }
+  }
+
+  function selMesH(mes) {
+    document.querySelectorAll('.btn-mes-h').forEach(b => b.classList.remove('activo'));
+    const btn = document.getElementById('bh-' + mes);
+    if (btn) btn.classList.add('activo');
+    cargarDatosMesH(mes);
+  }
+
+  async function cargarDatosMesH(mes) {
+    ['stats-grid-h','h-wrap-platos','h-wrap-dias'].forEach(id => document.getElementById(id).style.display = 'none');
+    document.getElementById('h-vacio').style.display = 'none';
+    try {
+      const snap = await db.collection('resumen_diario')
+        .where(firebase.firestore.FieldPath.documentId(), '>=', mes + '-01')
+        .where(firebase.firestore.FieldPath.documentId(), '<=', mes + '-31')
+        .get();
+      const datos = snap.docs.map(d => ({ ...d.data(), fecha: d.id })).sort((a,b) => b.fecha.localeCompare(a.fecha));
+      if (!datos.length) { document.getElementById('h-vacio').style.display = 'block'; return; }
+
+      const totalMes      = datos.reduce((s,d) => s + (d.total||0), 0);
+      const totalYape     = datos.reduce((s,d) => s + (d.totalYape||0), 0);
+      const totalEfectivo = datos.reduce((s,d) => s + (d.totalEfectivo||0), 0);
+      const totalPedidos  = datos.reduce((s,d) => s + (d.numPedidos||0), 0);
+
+      document.getElementById('h-total').textContent    = 'S/ ' + totalMes;
+      document.getElementById('h-pedidos').textContent  = totalPedidos;
+      document.getElementById('h-yape').textContent     = 'S/ ' + totalYape;
+      document.getElementById('h-efectivo').textContent = 'S/ ' + totalEfectivo;
+      document.getElementById('stats-grid-h').style.display = 'grid';
+
+      // Platos
+      const platosMes = {};
+      datos.forEach(d => {
+        if (d.platos) Object.keys(d.platos).forEach(n => {
+          if (!platosMes[n]) platosMes[n] = { qty:0, ganancia:0 };
+          platosMes[n].qty      += d.platos[n].qty || 0;
+          platosMes[n].ganancia += d.platos[n].ganancia || 0;
+        });
+      });
+      const ranking = Object.entries(platosMes).sort((a,b) => b[1].ganancia - a[1].ganancia);
+      const maxG = ranking.length ? ranking[0][1].ganancia : 1;
+      if (ranking.length) {
+        document.getElementById('h-lista-platos').innerHTML = ranking.map(([n,d]) => `
+          <div class="plato-row-h">
+            <div class="plato-top-h">
+              <span style="font-weight:700;font-size:0.88rem;color:#ddd;">${n}</span>
+              <span style="color:#C0392B;font-weight:700;font-size:0.88rem;">S/ ${d.ganancia}</span>
+            </div>
+            <div class="plato-bar-bg-h">
+              <div class="plato-bar-fill-h" style="width:${Math.round(d.ganancia/maxG*100)}%;"></div>
+            </div>
+            <div style="font-size:0.72rem;color:#555;margin-top:3px;">${d.qty} unidades vendidas</div>
+          </div>`).join('');
+        document.getElementById('h-wrap-platos').style.display = 'block';
+      }
+
+      // Días
+      const diasNom = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+      document.getElementById('h-lista-dias').innerHTML = datos.map(d => {
+        const fecha = new Date(d.fecha + 'T12:00:00');
+        return `<div class="dia-row-h">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="dia-badge-h">
+              <div style="font-size:0.62rem;color:#555;text-transform:uppercase;">${diasNom[fecha.getDay()]}</div>
+              <div style="font-size:1.05rem;font-weight:700;color:#ddd;">${fecha.getDate()}</div>
+            </div>
+            <div style="font-size:0.82rem;color:#666;">${d.numPedidos||0} pedidos</div>
+          </div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.05rem;font-weight:700;color:#C0392B;">S/ ${d.total}</div>
+        </div>`;
+      }).join('');
+      document.getElementById('h-wrap-dias').style.display = 'block';
+    } catch(e) {
+      document.getElementById('h-vacio').style.display = 'block';
+      console.error(e);
+    }
+  }
+
+</script>
+</body>
+</html>
